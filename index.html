@@ -22,7 +22,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <style>
-  :root {
+  :root, [data-theme="dark"] {
     --bg: #0f1923;
     --surface: #162231;
     --surface2: #1e2d40;
@@ -32,9 +32,28 @@
     --warn: #ff6b35;
     --text: #e4ecf7;
     --muted: #6e8cb0;
+    --chart-grid: #2a3347;
+    --chart-tick: #6b7a99;
+    --marker-border: #fff;
+    --toast-shadow: rgba(0,0,0,0.4);
     --radius: 12px;
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  [data-theme="light"] {
+    --bg: #f8f6f1;
+    --surface: #eeece6;
+    --surface2: #e4e1da;
+    --border: #ccc8bf;
+    --accent: #00a876;
+    --accent2: #2b7de9;
+    --warn: #e05a2b;
+    --text: #1c2030;
+    --muted: #7a7568;
+    --chart-grid: #d6d3cc;
+    --chart-tick: #6b6560;
+    --marker-border: #333;
+    --toast-shadow: rgba(0,0,0,0.15);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; overflow-x: hidden; }
@@ -60,7 +79,7 @@
     border-bottom: 1px solid var(--border); font-size: 0.85rem;
   }
   #install-banner button {
-    background: var(--accent); color: #0f1923; border: none; border-radius: 6px;
+    background: var(--accent); color: var(--bg); border: none; border-radius: 6px;
     padding: 6px 14px; font-weight: 600; font-size: 0.8rem; cursor: pointer; white-space: nowrap;
   }
   #install-banner .close-banner { background: none; color: var(--muted); padding: 4px 8px; }
@@ -72,14 +91,14 @@
     cursor: pointer; transition: all 0.2s; background: var(--surface);
     min-height: 220px; text-align: center;
   }
-  #drop-zone:hover, #drop-zone.dragover { border-color: var(--accent); background: rgba(0,229,160,0.04); }
+  #drop-zone:hover, #drop-zone.dragover { border-color: var(--accent); background: var(--surface2); }
   #drop-zone .icon { font-size: 3rem; opacity: 0.4; }
   #drop-zone h2 { font-size: 1.1rem; font-weight: 500; }
   #drop-zone p { font-size: 0.85rem; color: var(--muted); }
   #file-input { display: none; }
 
   .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.95rem; font-weight: 600; transition: all 0.15s; }
-  .btn-primary { background: var(--accent); color: #0f1923; }
+  .btn-primary { background: var(--accent); color: var(--bg); }
   .btn-primary:active { transform: scale(0.97); }
 
   #content { display: none; flex-direction: column; flex: 1; padding-bottom: var(--safe-bottom); }
@@ -123,11 +142,20 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* Toast notification */
+  /* Theme toggle */
+  .theme-toggle {
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); transition: color 0.2s, border-color 0.2s;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+
   #toast {
     position: fixed; bottom: calc(24px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(80px);
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     padding: 12px 20px; font-size: 0.85rem; color: var(--text);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4); transition: transform 0.3s ease; z-index: 9999;
+    box-shadow: 0 8px 32px var(--toast-shadow); transition: transform 0.3s ease; z-index: 9999;
     white-space: nowrap;
   }
   #toast.show { transform: translateX(-50%) translateY(0); }
@@ -137,6 +165,10 @@
 
 <header>
   <div class="logo">Trail<span>View</span></div>
+  <button class="theme-toggle" id="theme-toggle" aria-label="Basculer thème clair/sombre">
+    <svg id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    <svg id="icon-moon" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
   <div class="hr-control">
     <span>Âge :</span>
     <input type="number" id="age-input" value="38" min="10" max="99">
@@ -220,6 +252,63 @@ if ('serviceWorker' in navigator) {
       .catch(e => console.log('SW error', e));
   });
 }
+
+// ── Theme toggle ────────────────────────────────────────────
+function getThemeColors() {
+  const s = getComputedStyle(document.documentElement);
+  return {
+    grid: s.getPropertyValue('--chart-grid').trim(),
+    tick: s.getPropertyValue('--chart-tick').trim(),
+    accent: s.getPropertyValue('--accent').trim(),
+    bg: s.getPropertyValue('--bg').trim(),
+    surface: s.getPropertyValue('--surface').trim(),
+    text: s.getPropertyValue('--text').trim(),
+    markerBorder: s.getPropertyValue('--marker-border').trim(),
+  };
+}
+
+function applyChartTheme() {
+  const tc = getThemeColors();
+  [cElev, cHR, cPace].forEach(chart => {
+    if (!chart) return;
+    Object.values(chart.options.scales).forEach(scale => {
+      if (scale.ticks) scale.ticks.color = tc.tick;
+      if (scale.grid) scale.grid.color = tc.grid;
+    });
+    // update polyline color for elevation chart
+    if (chart === cElev && chart.data.datasets[0]) {
+      chart.data.datasets[0].borderColor = tc.accent;
+      const ctx = chart.ctx;
+      const gE = ctx.createLinearGradient(0, 0, 0, chart.height);
+      gE.addColorStop(0, tc.accent + '4D'); gE.addColorStop(1, tc.accent + '00');
+      chart.data.datasets[0].backgroundColor = gE;
+    }
+    chart.update('none');
+  });
+}
+
+(function initTheme() {
+  const stored = localStorage.getItem('tv-theme');
+  const theme = stored || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  document.documentElement.dataset.theme = theme;
+  updateThemeUI(theme);
+})();
+
+function updateThemeUI(theme) {
+  const isDark = theme === 'dark';
+  document.getElementById('icon-sun').style.display = isDark ? 'block' : 'none';
+  document.getElementById('icon-moon').style.display = isDark ? 'none' : 'block';
+  document.querySelector('meta[name="theme-color"]').content = isDark ? '#0f1923' : '#f8f6f1';
+}
+
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('tv-theme', next);
+  updateThemeUI(next);
+  // update charts if they exist
+  setTimeout(applyChartTheme, 50);
+});
 
 // ── Install prompt ──────────────────────────────────────────
 let deferredPrompt = null;
@@ -393,10 +482,11 @@ function processGPX(text) {
     mapInst=L.map('map');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM',maxZoom:19}).addTo(mapInst);
     const ll=pts.map(p=>[p.lat,p.lon]);
-    const poly=L.polyline(ll,{color:'#00e5a0',weight:3,opacity:0.9}).addTo(mapInst);
+    const tc=getThemeColors();
+    const poly=L.polyline(ll,{color:tc.accent,weight:3,opacity:0.9}).addTo(mapInst);
     const bounds=poly.getBounds();
-    const mkS=L.divIcon({className:'',html:'<div style="width:14px;height:14px;background:#00e5a0;border:2px solid #fff;border-radius:50%"></div>',iconSize:[14,14],iconAnchor:[7,7]});
-    const mkE=L.divIcon({className:'',html:'<div style="width:14px;height:14px;background:#ff6b35;border:2px solid #fff;border-radius:50%"></div>',iconSize:[14,14],iconAnchor:[7,7]});
+    const mkS=L.divIcon({className:'',html:`<div style="width:14px;height:14px;background:${tc.accent};border:2px solid ${tc.markerBorder};border-radius:50%"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+    const mkE=L.divIcon({className:'',html:`<div style="width:14px;height:14px;background:#ff6b35;border:2px solid ${tc.markerBorder};border-radius:50%"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
     L.marker(ll[0],{icon:mkS}).addTo(mapInst);
     L.marker(ll[ll.length-1],{icon:mkE}).addTo(mapInst);
 
@@ -408,8 +498,8 @@ function processGPX(text) {
     if (cElev) cElev.destroy();
     const eCtx=document.getElementById('elevation-chart').getContext('2d');
     const gE=eCtx.createLinearGradient(0,0,0,180);
-    gE.addColorStop(0,'rgba(0,229,160,0.3)'); gE.addColorStop(1,'rgba(0,229,160,0)');
-    cElev=new Chart(eCtx,{type:'line',data:{labels:cD,datasets:[{data:cA,borderColor:'#00e5a0',borderWidth:2,backgroundColor:gE,fill:true,pointRadius:0,tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>c[0].label+' km',label:c=>c.parsed.y.toFixed(0)+' m'}}},scales:{x:{ticks:{color:'#6b7a99',maxTicksLimit:8,font:{family:'Space Mono',size:10}},grid:{color:'#2a3347'}},y:{ticks:{color:'#6b7a99',font:{family:'Space Mono',size:10},callback:v=>v+' m'},grid:{color:'#2a3347'}}}}});
+    gE.addColorStop(0,tc.accent+'4D'); gE.addColorStop(1,tc.accent+'00');
+    cElev=new Chart(eCtx,{type:'line',data:{labels:cD,datasets:[{data:cA,borderColor:tc.accent,borderWidth:2,backgroundColor:gE,fill:true,pointRadius:0,tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>c[0].label+' km',label:c=>c.parsed.y.toFixed(0)+' m'}}},scales:{x:{ticks:{color:tc.tick,maxTicksLimit:8,font:{family:'Space Mono',size:10}},grid:{color:tc.grid}},y:{ticks:{color:tc.tick,font:{family:'Space Mono',size:10},callback:v=>v+' m'},grid:{color:tc.grid}}}}});
 
     if (hasHR) {
       document.getElementById('hr-chart-section').style.display='block';
@@ -418,7 +508,7 @@ function processGPX(text) {
       const gH=hCtx.createLinearGradient(0,0,0,160);
       gH.addColorStop(0,'rgba(230,57,70,0.3)'); gH.addColorStop(1,'rgba(230,57,70,0)');
       const validHR=cH.filter(v=>v);
-      cHR=new Chart(hCtx,{type:'line',data:{labels:cD,datasets:[{data:cH,borderColor:'#e63946',borderWidth:2,backgroundColor:gH,fill:true,pointRadius:0,tension:0.3,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>c[0].label+' km',label:c=>c.parsed.y+' bpm'}}},scales:{x:{ticks:{color:'#6b7a99',maxTicksLimit:8,font:{family:'Space Mono',size:10}},grid:{color:'#2a3347'}},y:{min:Math.max(50,Math.min(...validHR)-10),max:Math.min(220,Math.max(...validHR)+10),ticks:{color:'#6b7a99',font:{family:'Space Mono',size:10},callback:v=>v+' bpm'},grid:{color:'#2a3347'}}}}});
+      cHR=new Chart(hCtx,{type:'line',data:{labels:cD,datasets:[{data:cH,borderColor:'#e63946',borderWidth:2,backgroundColor:gH,fill:true,pointRadius:0,tension:0.3,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>c[0].label+' km',label:c=>c.parsed.y+' bpm'}}},scales:{x:{ticks:{color:tc.tick,maxTicksLimit:8,font:{family:'Space Mono',size:10}},grid:{color:tc.grid}},y:{min:Math.max(50,Math.min(...validHR)-10),max:Math.min(220,Math.max(...validHR)+10),ticks:{color:tc.tick,font:{family:'Space Mono',size:10},callback:v=>v+' bpm'},grid:{color:tc.grid}}}}});
 
       document.getElementById('zones-section').style.display='block';
       const totZS=zoneSec.reduce((a,b)=>a+b,0);
@@ -436,7 +526,7 @@ function processGPX(text) {
     const valSplits=splits.filter(s=>s.pace&&s.pace>0&&s.pace<1800);
     if (valSplits.length>0) {
       const pCtx=document.getElementById('pace-chart').getContext('2d');
-      cPace=new Chart(pCtx,{type:'bar',data:{labels:valSplits.map(s=>'km'+s.km),datasets:[{data:valSplits.map(s=>+(s.pace/60).toFixed(2)),backgroundColor:valSplits.map(s=>s.pace<300?'#00e5a0':s.pace<360?'#0099ff':s.pace<420?'#ffd166':'#ff6b35'),borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmtPace(c.parsed.y*60)}}},scales:{x:{ticks:{color:'#6b7a99',font:{family:'Space Mono',size:10}},grid:{display:false}},y:{reverse:true,ticks:{color:'#6b7a99',font:{family:'Space Mono',size:10},callback:v=>{const m=Math.floor(v);return `${m}'${String(Math.round((v-m)*60)).padStart(2,'0')}"`;  }},grid:{color:'#2a3347'}}}}});
+      cPace=new Chart(pCtx,{type:'bar',data:{labels:valSplits.map(s=>'km'+s.km),datasets:[{data:valSplits.map(s=>+(s.pace/60).toFixed(2)),backgroundColor:valSplits.map(s=>s.pace<300?tc.accent:s.pace<360?'#0099ff':s.pace<420?'#ffd166':'#ff6b35'),borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmtPace(c.parsed.y*60)}}},scales:{x:{ticks:{color:tc.tick,font:{family:'Space Mono',size:10}},grid:{display:false}},y:{reverse:true,ticks:{color:tc.tick,font:{family:'Space Mono',size:10},callback:v=>{const m=Math.floor(v);return `${m}'${String(Math.round((v-m)*60)).padStart(2,'0')}"`;  }},grid:{color:tc.grid}}}}});
     }
 
     const sGrid=document.getElementById('splits-grid'); sGrid.innerHTML='';
