@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TrailView — Analyse GPX</title>
+
+<!-- PWA Meta -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0e1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TrailView">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<!-- Styles & libs -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<style>
+  :root {
+    --bg: #0e1117;
+    --surface: #161b25;
+    --surface2: #1e2535;
+    --border: #2a3347;
+    --accent: #00e5a0;
+    --accent2: #0099ff;
+    --warn: #ff6b35;
+    --text: #e8edf5;
+    --muted: #6b7a99;
+    --radius: 12px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow-x: hidden; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; padding-top: calc(14px + var(--safe-top));
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    position: sticky; top: 0; z-index: 1000; flex-wrap: wrap; gap: 8px;
+  }
+  .logo { font-family: 'Space Mono', monospace; font-size: 1.1rem; color: var(--accent); }
+  .logo span { color: var(--muted); }
+  .hr-control { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+  .hr-control input { width: 54px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; font-family: 'Space Mono', monospace; font-size: 0.85rem; text-align: center; }
+  .hr-control input:focus { outline: none; border-color: var(--accent); }
+
+  /* Install banner */
+  #install-banner {
+    display: none; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 10px 20px;
+    background: linear-gradient(90deg, rgba(0,229,160,0.12), rgba(0,153,255,0.08));
+    border-bottom: 1px solid var(--border); font-size: 0.85rem;
+  }
+  #install-banner button {
+    background: var(--accent); color: #0e1117; border: none; border-radius: 6px;
+    padding: 6px 14px; font-weight: 600; font-size: 0.8rem; cursor: pointer; white-space: nowrap;
+  }
+  #install-banner .close-banner { background: none; color: var(--muted); padding: 4px 8px; }
+
+  #drop-zone {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 60px 24px; margin: 24px 20px;
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    cursor: pointer; transition: all 0.2s; background: var(--surface);
+    min-height: 220px; text-align: center;
+  }
+  #drop-zone:hover, #drop-zone.dragover { border-color: var(--accent); background: rgba(0,229,160,0.04); }
+  #drop-zone .icon { font-size: 3rem; opacity: 0.4; }
+  #drop-zone h2 { font-size: 1.1rem; font-weight: 500; }
+  #drop-zone p { font-size: 0.85rem; color: var(--muted); }
+  #file-input { display: none; }
+
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.95rem; font-weight: 600; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #0e1117; }
+  .btn-primary:active { transform: scale(0.97); }
+
+  #content { display: none; flex-direction: column; flex: 1; padding-bottom: var(--safe-bottom); }
+
+  .stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
+  @media (max-width: 600px) { .stats-strip { grid-template-columns: repeat(2, 1fr); } }
+  .stat-card { background: var(--surface); padding: 16px 20px; display: flex; flex-direction: column; gap: 4px; }
+  .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-family: 'Space Mono', monospace; }
+  .stat-value { font-family: 'Space Mono', monospace; font-size: 1.5rem; font-weight: 700; color: var(--text); line-height: 1; }
+  .stat-value.up { color: var(--warn); }
+  .stat-value.down { color: var(--accent2); }
+  .stat-unit { font-size: 0.75rem; color: var(--muted); font-family: 'Space Mono', monospace; }
+
+  #map { height: 45vw; min-height: 240px; max-height: 400px; width: 100%; }
+
+  .chart-section { background: var(--surface); border-top: 1px solid var(--border); padding: 20px; }
+  .section-title { font-family: 'Space Mono', monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 14px; }
+
+  .zones-section { background: var(--surface); border-top: 1px solid var(--border); padding: 20px; }
+  .zone-row { display: grid; grid-template-columns: 90px 1fr 60px 60px; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .zone-label { font-family: 'Space Mono', monospace; font-size: 0.72rem; display: flex; align-items: center; gap: 6px; }
+  .zone-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .zone-bar-bg { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .zone-bar-fill { height: 100%; border-radius: 4px; }
+  .zone-pct { font-family: 'Space Mono', monospace; font-size: 0.8rem; text-align: right; }
+  .zone-time { font-family: 'Space Mono', monospace; font-size: 0.75rem; color: var(--muted); text-align: right; }
+
+  .splits-section { background: var(--surface); border-top: 1px solid var(--border); padding: 20px; }
+  .splits-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .split-card { background: var(--surface2); border-radius: 8px; padding: 10px 14px; }
+  .split-km { font-family: 'Space Mono', monospace; font-size: 0.7rem; color: var(--muted); }
+  .split-pace { font-family: 'Space Mono', monospace; font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+  .split-hr { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: #e63946; margin-top: 2px; }
+  .split-bar { height: 3px; border-radius: 2px; margin-top: 8px; }
+
+  .info-row { padding: 12px 20px; background: var(--surface2); border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); flex-wrap: wrap; }
+  .tag { background: var(--border); border-radius: 4px; padding: 2px 8px; font-family: 'Space Mono', monospace; font-size: 0.7rem; color: var(--accent); }
+
+  .loader { display: none; text-align: center; padding: 60px 40px; color: var(--muted); }
+  .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Toast notification */
+  #toast {
+    position: fixed; bottom: calc(24px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 20px; font-size: 0.85rem; color: var(--text);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4); transition: transform 0.3s ease; z-index: 9999;
+    white-space: nowrap;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Trail<span>View</span></div>
+  <div class="hr-control">
+    <span>Âge :</span>
+    <input type="number" id="age-input" value="38" min="10" max="99">
+    <span id="hrmax-display" style="color:var(--accent);font-family:'Space Mono',monospace;font-size:0.8rem;">FCmax: 182</span>
+  </div>
+</header>
+
+<!-- Bannière d'installation -->
+<div id="install-banner">
+  <span>📲 Installe TrailView sur ton écran d'accueil</span>
+  <div style="display:flex;gap:8px">
+    <button id="install-btn">Installer</button>
+    <button class="close-banner" id="close-banner">✕</button>
+  </div>
+</div>
+
+<div id="drop-zone">
+  <div class="icon">📍</div>
+  <h2>Importe ton fichier GPX</h2>
+  <p>Glisse-dépose ici ou appuie pour choisir</p>
+  <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">Choisir un fichier GPX</button>
+  <input type="file" id="file-input" accept=".gpx">
+</div>
+
+<div class="loader" id="loader"><div class="spinner"></div>Analyse en cours…</div>
+
+<div id="content">
+  <div class="stats-strip">
+    <div class="stat-card"><div class="stat-label">Distance</div><div class="stat-value" id="stat-distance">—</div><div class="stat-unit">km</div></div>
+    <div class="stat-card"><div class="stat-label">Allure moy.</div><div class="stat-value" id="stat-pace">—</div><div class="stat-unit">min/km</div></div>
+    <div class="stat-card"><div class="stat-label">D+ corrigé</div><div class="stat-value up" id="stat-elev-up">—</div><div class="stat-unit">m</div></div>
+    <div class="stat-card"><div class="stat-label">D− corrigé</div><div class="stat-value down" id="stat-elev-down">—</div><div class="stat-unit">m</div></div>
+  </div>
+  <div class="stats-strip" id="hr-stats" style="display:none">
+    <div class="stat-card"><div class="stat-label">FC moyenne</div><div class="stat-value" id="stat-hr-avg" style="color:#e63946">—</div><div class="stat-unit">bpm</div></div>
+    <div class="stat-card"><div class="stat-label">FC max séance</div><div class="stat-value" id="stat-hr-max" style="color:#e63946">—</div><div class="stat-unit">bpm</div></div>
+    <div class="stat-card"><div class="stat-label">FC min séance</div><div class="stat-value" id="stat-hr-min" style="color:#e63946">—</div><div class="stat-unit">bpm</div></div>
+    <div class="stat-card"><div class="stat-label">Zone dominante</div><div class="stat-value" id="stat-hr-zone" style="font-size:0.95rem;line-height:1.3">—</div><div class="stat-unit" id="stat-hr-zone-pct"></div></div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="info-row">
+    <span id="info-name" style="font-weight:500"></span>
+    <span class="tag" id="info-points"></span>
+    <span class="tag" id="info-duration"></span>
+    <span class="tag">Kalman</span>
+    <span class="tag" id="info-hr-tag" style="display:none;color:#e63946">❤ FC incluse</span>
+  </div>
+
+  <div class="chart-section">
+    <div class="section-title">Profil altimétrique corrigé</div>
+    <div style="position:relative;height:180px"><canvas id="elevation-chart"></canvas></div>
+  </div>
+  <div class="chart-section" id="hr-chart-section" style="display:none">
+    <div class="section-title">Fréquence cardiaque</div>
+    <div style="position:relative;height:160px"><canvas id="hr-chart"></canvas></div>
+  </div>
+  <div class="zones-section" id="zones-section" style="display:none">
+    <div class="section-title">Zones FC — répartition du temps</div>
+    <div id="zones-grid"></div>
+  </div>
+  <div class="chart-section">
+    <div class="section-title">Allure par km</div>
+    <div style="position:relative;height:140px"><canvas id="pace-chart"></canvas></div>
+  </div>
+  <div class="splits-section">
+    <div class="section-title">Splits kilomètre par kilomètre</div>
+    <div class="splits-grid" id="splits-grid"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Service Worker ──────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(() => console.log('SW registered'))
+      .catch(e => console.log('SW error', e));
+  });
+}
+
+// ── Install prompt ──────────────────────────────────────────
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('install-banner').style.display = 'flex';
+});
+document.getElementById('install-btn').addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  document.getElementById('install-banner').style.display = 'none';
+  if (outcome === 'accepted') showToast('✅ TrailView installé !');
+});
+document.getElementById('close-banner').addEventListener('click', () => {
+  document.getElementById('install-banner').style.display = 'none';
+});
+window.addEventListener('appinstalled', () => showToast('✅ TrailView installé sur l\'écran d\'accueil !'));
+
+function showToast(msg, duration=3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ── Config zones FC ─────────────────────────────────────────
+const ZONES = [
+  { name: 'Z1 Récup.',    pMin: 0.00, pMax: 0.60, color: '#4cc9f0' },
+  { name: 'Z2 Endurance', pMin: 0.60, pMax: 0.70, color: '#4361ee' },
+  { name: 'Z3 Tempo',     pMin: 0.70, pMax: 0.80, color: '#f8b500' },
+  { name: 'Z4 Seuil',     pMin: 0.80, pMax: 0.90, color: '#ff6b35' },
+  { name: 'Z5 Max',       pMin: 0.90, pMax: 1.01, color: '#e63946' },
+];
+
+const ageInput = document.getElementById('age-input');
+const hrmaxDisplay = document.getElementById('hrmax-display');
+function getHRMax() { return 220 - (parseInt(ageInput.value) || 38); }
+ageInput.addEventListener('input', () => { hrmaxDisplay.textContent = 'FCmax: ' + getHRMax(); });
+
+// ── GPX Parser ──────────────────────────────────────────────
+function parseGPX(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const name = doc.querySelector('name')?.textContent || 'Activité';
+  const pts = [...doc.querySelectorAll('trkpt')].map(pt => {
+    const hrEl = pt.querySelector('hr') || pt.querySelector('HeartRateBpm value');
+    return {
+      lat: +pt.getAttribute('lat'), lon: +pt.getAttribute('lon'),
+      ele: +(pt.querySelector('ele')?.textContent || 0),
+      time: pt.querySelector('time') ? new Date(pt.querySelector('time').textContent) : null,
+      hr: hrEl ? +hrEl.textContent : null
+    };
+  });
+  return { name, pts };
+}
+
+function haversine(a, b) {
+  const R=6371000, toR=Math.PI/180;
+  const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR;
+  const s=Math.sin(dLat/2)**2+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+
+function kalman(vals, noise=10, process=0.5) {
+  let est=vals[0], err=15; const out=[est];
+  for (let i=1;i<vals.length;i++) {
+    const pErr=err+process, gain=pErr/(pErr+noise);
+    est+=gain*(vals[i]-est); err=(1-gain)*pErr; out.push(est);
+  }
+  return out;
+}
+
+function calcDPlus(alts, thr=3) {
+  let up=0, down=0, last=alts[0];
+  for (let i=1;i<alts.length;i++) {
+    const d=alts[i]-last;
+    if (Math.abs(d)>=thr) { d>0?up+=d:down+=Math.abs(d); last=alts[i]; }
+  }
+  return { up: Math.round(up), down: Math.round(down) };
+}
+
+function fmtDur(ms) {
+  const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+  return h>0?`${h}h${String(m).padStart(2,'0')}`:`${m}min${String(sec).padStart(2,'0')}`;
+}
+function fmtPace(sec) {
+  if (!isFinite(sec)||sec<=0) return '—';
+  return `${Math.floor(sec/60)}'${String(Math.round(sec%60)).padStart(2,'0')}"`;
+}
+function zoneOf(hr, hm) {
+  const p=hr/hm;
+  for (let i=ZONES.length-1;i>=0;i--) if (p>=ZONES[i].pMin) return i;
+  return 0;
+}
+
+let mapInst=null, cElev=null, cHR=null, cPace=null;
+
+function processGPX(text) {
+  document.getElementById('loader').style.display='block';
+  document.getElementById('content').style.display='none';
+  document.getElementById('drop-zone').style.display='none';
+
+  setTimeout(() => {
+    const { name, pts } = parseGPX(text);
+    if (pts.length<2) { alert('GPX invalide'); document.getElementById('loader').style.display='none'; document.getElementById('drop-zone').style.display='flex'; return; }
+
+    const hrMax=getHRMax();
+    let tot=0; const dists=[0];
+    for (let i=1;i<pts.length;i++) { tot+=haversine(pts[i-1],pts[i]); dists.push(tot); }
+    const distKm=tot/1000;
+
+    const filtAlts=kalman(pts.map(p=>p.ele));
+    const { up, down }=calcDPlus(filtAlts);
+
+    const hrPts=pts.filter(p=>p.hr&&p.hr>30&&p.hr<250);
+    const hasHR=hrPts.length>pts.length*0.3;
+
+    const hasTime=pts[0].time&&pts[pts.length-1].time;
+    const duration=hasTime?pts[pts.length-1].time-pts[0].time:null;
+    const avgPaceStr=(hasTime&&duration>0)?fmtPace((duration/1000)/distKm):'—';
+
+    const splits=[]; let kmIdx=0, lastKmDist=0, lastKmTime=pts[0].time, sHrSum=0, sHrN=0;
+    for (let i=1;i<pts.length;i++) {
+      if (pts[i].hr&&pts[i].hr>30) { sHrSum+=pts[i].hr; sHrN++; }
+      const km=Math.floor(dists[i]/1000);
+      if (km>kmIdx) {
+        const seg={km,pace:null,hrAvg:null};
+        if (hasTime&&pts[i].time&&lastKmTime) { const el=(pts[i].time-lastKmTime)/1000, sd=(dists[i]-lastKmDist)/1000; seg.pace=el/sd; }
+        if (sHrN>0) seg.hrAvg=Math.round(sHrSum/sHrN);
+        splits.push(seg);
+        kmIdx=km; lastKmDist=dists[i]; lastKmTime=pts[i].time; sHrSum=0; sHrN=0;
+      }
+    }
+
+    const zoneSec=[0,0,0,0,0];
+    if (hasHR&&hasTime) {
+      for (let i=1;i<pts.length;i++) {
+        if (!pts[i].hr||!pts[i].time||!pts[i-1].time) continue;
+        const dt=(pts[i].time-pts[i-1].time)/1000;
+        if (dt>0&&dt<60) zoneSec[zoneOf(pts[i].hr,hrMax)]+=dt;
+      }
+    }
+
+    // Stats
+    document.getElementById('stat-distance').textContent=distKm.toFixed(2);
+    document.getElementById('stat-pace').textContent=avgPaceStr;
+    document.getElementById('stat-elev-up').textContent=up;
+    document.getElementById('stat-elev-down').textContent=down;
+    document.getElementById('info-name').textContent=name;
+    document.getElementById('info-points').textContent=pts.length+' pts';
+    if (duration) document.getElementById('info-duration').textContent=fmtDur(duration);
+
+    if (hasHR) {
+      const hrs=hrPts.map(p=>p.hr);
+      const hrAvg=Math.round(hrs.reduce((a,b)=>a+b,0)/hrs.length);
+      const domZ=zoneSec.indexOf(Math.max(...zoneSec));
+      const totZS=zoneSec.reduce((a,b)=>a+b,0);
+      document.getElementById('stat-hr-avg').textContent=hrAvg;
+      document.getElementById('stat-hr-max').textContent=Math.max(...hrs);
+      document.getElementById('stat-hr-min').textContent=Math.min(...hrs);
+      const zEl=document.getElementById('stat-hr-zone');
+      zEl.textContent=ZONES[domZ].name; zEl.style.color=ZONES[domZ].color;
+      document.getElementById('stat-hr-zone-pct').textContent=totZS>0?(zoneSec[domZ]/totZS*100).toFixed(0)+'% du temps':'';
+      document.getElementById('hr-stats').style.display='grid';
+      document.getElementById('info-hr-tag').style.display='inline';
+    }
+
+    // Map
+    if (mapInst) { mapInst.remove(); mapInst=null; }
+    mapInst=L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM',maxZoom:19}).addTo(mapInst);
+    const ll=pts.map(p=>[p.lat,p.lon]);
+    const poly=L.polyline(ll,{color:'#00e5a0',weight:3,opacity:0.9}).addTo(mapInst);
+    mapInst.fitBounds(poly.getBounds(),{padding:[20,20]});
+    const mkS=L.divIcon({className:'',html:'<div style="width:14px;height:14px;background:#00e5a0;border:2px solid #fff;border-radius:50%"></div>',iconSize:[14,14],iconAnchor:[7,7]});
+    const mkE=L.divIcon({className:'',html:'<div style="width:14px;height:14px;background:#ff6b35;border:2px solid #fff;border-radius:50%"></div>',iconSize:[14,14],iconAnchor:[7,7]});
+    L.marker(ll[0],{icon:mkS}).addTo(mapInst);
+    L.marker(ll[ll.length-1],{icon:mkE}).addTo(mapInst);
+
+    // Charts
+    const S=Math.max(1,Math.floor(pts.length/500));
+    const cD=[],cA=[],cH=[];
+    for (let i=0;i<pts.length;i+=S) { cD.push((dists[i]/1000).toFixed(2)); cA.push(+filtAlts[i].toFixed(1)); cH.push(pts[i].hr||null); }
+
+    if (cElev) cElev.destroy();
+    const eCtx=document.getElementById('elevation-chart').getContext('2d');
+    const gE=eCtx.createLinearGradient(0,0,0,180);
+    gE.addColorStop(0,'rgba(0,229,160,0.3)'); gE.addColorStop(1,'rgba(0,229,160,0)');
+    cElev=new Chart(eCtx,{type:'line',data:{labels:cD,datasets:[{data:cA,borderColor:'#00e5a0',borderWidth:2,backgroundColor:gE,fill:true,pointRadius:0,tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>c[0].label+' km',label:c=>c.parsed.y.toFixed(0)+' m'}}},scales:{x:{ticks:{color:'#6b7a99',maxTicksLimit:8,font:{family:'Space Mono',size:10}},grid:{color:'#2a3347'}},y:{ticks:{color:'#6b7a99',font:{family:'Space Mono',size:10},callback:v=>v+' m'},grid:{color:'#2a3347'}}}}});
+
+    if (hasHR) {
+      document.getElementById('hr-chart-section').style.display='block';
+      if (cHR) cHR.destroy();
+      const hCtx=document.getElementById('hr-chart').getContext('2d');
+      const gH=hCtx.createLinearGradient(0,0,0,160);
+      gH.addColorStop(0,'rgba(230,57,70,0.3)'); gH.addColorStop(1,'rgba(230,57,70,0)');
+      const validHR=cH.filter(v=>v);
+      cHR=new Chart(hCtx,{type:'line',data:{labels:cD,datasets:[{data:cH,borderColor:'#e63946',borderWidth:2,backgroundColor:gH,fill:true,pointRadius:0,tension:0.3,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>c[0].label+' km',label:c=>c.parsed.y+' bpm'}}},scales:{x:{ticks:{color:'#6b7a99',maxTicksLimit:8,font:{family:'Space Mono',size:10}},grid:{color:'#2a3347'}},y:{min:Math.max(50,Math.min(...validHR)-10),max:Math.min(220,Math.max(...validHR)+10),ticks:{color:'#6b7a99',font:{family:'Space Mono',size:10},callback:v=>v+' bpm'},grid:{color:'#2a3347'}}}}});
+
+      document.getElementById('zones-section').style.display='block';
+      const totZS=zoneSec.reduce((a,b)=>a+b,0);
+      const zGrid=document.getElementById('zones-grid'); zGrid.innerHTML='';
+      ZONES.forEach((z,i)=>{
+        const pct=totZS>0?zoneSec[i]/totZS:0;
+        const bpmLow=Math.round(z.pMin*hrMax), bpmHigh=i===4?hrMax:Math.round(z.pMax*hrMax);
+        const row=document.createElement('div'); row.className='zone-row';
+        row.innerHTML=`<div class="zone-label"><div class="zone-dot" style="background:${z.color}"></div><span style="color:${z.color}">${z.name}</span></div><div><div style="font-size:0.68rem;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:4px">${bpmLow}–${bpmHigh} bpm</div><div class="zone-bar-bg"><div class="zone-bar-fill" style="width:${(pct*100).toFixed(1)}%;background:${z.color}"></div></div></div><div class="zone-pct" style="color:${z.color}">${(pct*100).toFixed(1)}%</div><div class="zone-time">${fmtDur(zoneSec[i]*1000)}</div>`;
+        zGrid.appendChild(row);
+      });
+    }
+
+    if (cPace) cPace.destroy();
+    const valSplits=splits.filter(s=>s.pace&&s.pace>0&&s.pace<1800);
+    if (valSplits.length>0) {
+      const pCtx=document.getElementById('pace-chart').getContext('2d');
+      cPace=new Chart(pCtx,{type:'bar',data:{labels:valSplits.map(s=>'km'+s.km),datasets:[{data:valSplits.map(s=>+(s.pace/60).toFixed(2)),backgroundColor:valSplits.map(s=>s.pace<300?'#00e5a0':s.pace<360?'#0099ff':s.pace<420?'#ffd166':'#ff6b35'),borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmtPace(c.parsed.y*60)}}},scales:{x:{ticks:{color:'#6b7a99',font:{family:'Space Mono',size:10}},grid:{display:false}},y:{reverse:true,ticks:{color:'#6b7a99',font:{family:'Space Mono',size:10},callback:v=>{const m=Math.floor(v);return `${m}'${String(Math.round((v-m)*60)).padStart(2,'0')}"`;  }},grid:{color:'#2a3347'}}}}});
+    }
+
+    const sGrid=document.getElementById('splits-grid'); sGrid.innerHTML='';
+    if (valSplits.length>0) {
+      const paces=valSplits.map(s=>s.pace);
+      const pMax=Math.max(...paces), pMin=Math.min(...paces);
+      splits.forEach(s=>{
+        if (!s.pace) return;
+        const zi=(s.hrAvg&&hasHR)?zoneOf(s.hrAvg,hrMax):null;
+        const barColor=zi!==null?ZONES[zi].color:'#00e5a0';
+        const barW=pMax>pMin?Math.round((1-(s.pace-pMin)/(pMax-pMin))*100):50;
+        const card=document.createElement('div'); card.className='split-card';
+        card.innerHTML=`<div class="split-km">km ${s.km}</div><div class="split-pace">${fmtPace(s.pace)}</div>${s.hrAvg?`<div class="split-hr">❤ ${s.hrAvg} bpm</div>`:''}<div class="split-bar" style="width:${barW}%;background:${barColor}"></div>`;
+        sGrid.appendChild(card);
+      });
+    } else {
+      sGrid.innerHTML='<div style="color:var(--muted);font-size:0.85rem;">Pas de données horaires — allure non disponible.</div>';
+    }
+
+    document.getElementById('loader').style.display='none';
+    document.getElementById('content').style.display='flex';
+    document.getElementById('content').style.flexDirection='column';
+    setTimeout(()=>mapInst.invalidateSize(),200);
+    showToast('✅ ' + name + ' chargé');
+  }, 50);
+}
+
+document.getElementById('file-input').addEventListener('change', e=>{
+  const f=e.target.files[0]; if (!f) return;
+  const r=new FileReader(); r.onload=ev=>processGPX(ev.target.result); r.readAsText(f);
+});
+const dz=document.getElementById('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('dragover');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.name.endsWith('.gpx')){const r=new FileReader();r.onload=ev=>processGPX(ev.target.result);r.readAsText(f);}
+});
+dz.addEventListener('click',e=>{if(e.target.tagName!=='BUTTON')document.getElementById('file-input').click();});
+</script>
+</body>
+</html>
